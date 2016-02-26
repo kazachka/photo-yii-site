@@ -5,8 +5,8 @@ namespace app\controllers;
 use Yii;
 use yii\db\Query;
 use yii\filters\AccessControl;
+use yii\helpers\Url;
 use yii\web\Controller;
-use yii\web\Response;
 use yii\web\UploadedFile;
 use yii\filters\VerbFilter;
 use app\models\LoginForm;
@@ -17,8 +17,9 @@ use app\models\RegisterForm;
 use app\models\SearchForm;
 use app\models\User;
 use app\models\PhotoActiveRecord;
-use app\models\CommentsActiveRecord;
-use app\models\TagsActiveRecord;
+use app\models\EditingPhotoActiveRecord;
+use app\models\PhotoRatesActiveRecord;
+use app\models\QueryModel;
 
 class SiteController extends Controller
 {
@@ -57,6 +58,16 @@ class SiteController extends Controller
             ],
         ];
     }
+    
+    public function beforeAction($action){
+		if(!parent::beforeAction($action)){
+			return false;
+		}
+		if(Yii::$app->session->has('language')){
+			Yii::$app->language = Yii::$app->session->get('language');
+		}
+		return true;
+	}
 
     public function actionIndex()
     {
@@ -65,14 +76,12 @@ class SiteController extends Controller
 			in_array($model->type, [
 				'name',
 				'tag',
-				'user',
+				'users',
 			])){
 			$query = $model->search()->all();
 		}
 		else{
-			$query = PhotoActiveRecord::find()
-						->orderBy(['posted' => SORT_DESC])
-						->all();
+			$query = QueryModel::photos()->asArray()->all();
 		}
         return $this->render('index',[
 					'model' => $model,
@@ -82,13 +91,12 @@ class SiteController extends Controller
 
     public function actionLogin()
     {
-        if (!\Yii::$app->user->isGuest) {
+        if(!Yii::$app->user->isGuest){
             return $this->goHome();
         }
-
         $model = new LoginForm();
         if ($model->load(Yii::$app->request->post()) && $model->login()) {
-            return $this->redirect('index.php?r=site/profile');
+            return $this->redirect(Url::to(['site/profile']));
         }
         return $this->render('login', [
             'model' => $model,
@@ -97,8 +105,11 @@ class SiteController extends Controller
     
     public function actionRegister(){
 		$model = new RegisterForm();
-		if($model->load(Yii::$app->request->post()) && $model->register()){
-			$this->redirect('index.php?r=site/profile');
+		if(Yii::$app->request->isPost){
+			$model->load(Yii::$app->request->post());
+			$model->photo = UploadedFile::getInstance($model, 'photo');
+			$model->register();
+			$this->redirect(Url::to(['site/profile']));
 		}
 		return $this->render('register', [
 			'model' => $model,
@@ -111,11 +122,7 @@ class SiteController extends Controller
 			$id = Yii::$app->user->identity->id;
 		}
 		if($id != null){
-			$user = (new Query())
-						->from('user')
-						->where(['user.id' => $id])
-						->join('left join', 'photo', 'user.photo = photo.id')
-						->one();
+			$user = QueryModel::user($id);
 			return $this->render('profile',['user' => $user]);
 		}
 		return $this->goHome();
@@ -127,23 +134,13 @@ class SiteController extends Controller
 			$id = Yii::$app->user->identity->id;
 		}
 		if($id != null){
-			$user = (new Query())
-						->from('user')
-						->where(['user.id' => $id])
-						->join('left join', 'photo', 'user.photo = photo.id')
-						->select([
-							'id' => 'user.id', 
-							'photo' => 'photo.photo',
-							'fio',
-						])
-						->one();
-			$photo = PhotoActiveRecord::find()
-						->where(['userId' => $id])
-						->orderBy(['posted' => SORT_DESC])
-						->all();
+			$user = QueryModel::user($id);
+			$photo = QueryModel::userPhotos($id);
+			$isFriend = QueryModel::isFriend($id);
 			return $this->render('photo',[
 									'user' => $user,
 									'photo' => $photo,
+									'isFriend' => $isFriend,
 								]);
 		}
 		return $this->goHome();
@@ -151,18 +148,11 @@ class SiteController extends Controller
 	
 	public function actionImage($id){
 		$photo = PhotoActiveRecord::findOne($id);
-		$comments = (new Query())
-						->from('comments')
-						->where(['photoId' => $id])
-						->join('join','user','comments.userId = user.id')
-						->orderBy(['created' => SORT_DESC])
-						->select([
-							'fio',
-							'created',
-							'body',
-							'id' => 'comments.id',
-						])
-						->all();
+		$user = User::findOne($photo->userId);
+		$photovote = PhotoRatesActiveRecord::getRates($id);
+		$comments = QueryModel::comments($id);
+		$tags = QueryModel::photoTags($id);
+		$search = new SearchForm();
 		if(!Yii::$app->user->isGuest){
 			$model = new CommentForm();
 			if($model->load(Yii::$app->request->post()) && $model->post()){
@@ -170,16 +160,24 @@ class SiteController extends Controller
 			}
 			else{
 				return $this->render('image',[
+									'user' => $user,
 									'photo' => $photo,
+									'photovote' => $photovote,
 									'comments' =>$comments,
+									'tags' => $tags,
+									'search' => $search,
 									'model' => $model,
 								]);
 			}
 		}
 		else{
 			return $this->render('image',[
+									'user' => $user,
 									'photo' => $photo,
+									'photovote' => $photovote,
 									'comments' => $comments,
+									'search' => $search,
+									'tags' => $tags,
 								]);
 		}
 	}
@@ -187,10 +185,10 @@ class SiteController extends Controller
 	public function actionLoad(){
 		$model = new LoadForm();
 		if(Yii::$app->request->isPost){
-			$model->name = Yii::$app->request->post('name');
+			$model->load(Yii::$app->request->post());
 			$model->file = UploadedFile::getInstance($model, 'file');
 			if($model->post()){
-				return $this->redirect('index.php?r=site/photo');
+				return $this->redirect(Url::to(['site/photo']));
 			}
 		}
 		return $this->render('load',['model' => $model]);
@@ -199,103 +197,39 @@ class SiteController extends Controller
     public function actionLogout()
     {
         Yii::$app->user->logout();
-
         return $this->goHome();
     }
-    
-    public function actionDeleteuser($id){
-		if(!Yii::$app->user->isGuest && Yii::$app->user->identity->role == 'admin'){
-			User::findOne($id)->delete();
-		}
-		return $this->goBack();
-	}
-	
-	public function actionDeleteimage($id){
-		if(!Yii::$app->user->isGuest && Yii::$app->user->identity->role == 'admin'){
-			PhotoActiveRecord::findOne($id)->delete();
-		}
-		return $this->goBack();
-	}
-	
-	public function actionUpdatecomment($id){
-		if(!Yii::$app->user->isGuest && Yii::$app->user->identity->role == 'admin'){
-			$model = new CommentForm();
-			if($model->load(Yii::$app->request->post())){
-				$comment = CommentsActiveRecord::findOne($id);
-				$comment->body = $model->body;
-				$comment->save();
-			}
-		}
-		return $this->goBack();
-	}
-	
-	public function actionDeletecomment($id){
-		if(!Yii::$app->user->isGuest && Yii::$app->user->identity->role == 'admin'){
-			CommentsActiveRecord::findOne($id)->delete();
-		}
-		return $this->goBack();
-	}
-
-	public function actionDeletetag($tag){
-		if(!Yii::$app->user->isGuest && Yii::$app->user->identity->role == 'admin'){
-			$tag = TagsActiveRecord::findAll(['tag' => $tag]);
-			foreach($tag as $item){
-				$item->delete();
-			}
-		}
-		return $this->goBack();
-	}
-
     public function actionContact()
     {
         $model = new ContactForm();
         if ($model->load(Yii::$app->request->post()) && $model->contact(Yii::$app->params['adminEmail'])) {
             Yii::$app->session->setFlash('contactFormSubmitted');
-
             return $this->refresh();
         }
         return $this->render('contact', [
             'model' => $model,
         ]);
     }
+	
+	public function actionUpdatecomment($id){
+		if(Yii::$app->request->isPost && !Yii::$app->user->isGuest && Yii::$app->user->identity->role == 'admin'){
+			$model = new CommentForm();
+			if($model->load(Yii::$app->request->post())){
+				if($model->update($id)){
+					$this->goBack();
+				}
+			}
+		}
+		return false;
+	}
     
     public function actionFriends(){
-		$friendsQuery = (new Query())
-					->from('friends a')
-					->join('join', 'friends b', 'a.id1 = b.id2')
-					->where(['and', 'a.id2=b.id1', 'a.id1='.Yii::$app->user->identity->id])
-					->select(['id' => 'a.id2']);
-		$new = (new Query())
-					->from('friends')
-					->where(['and', ['not in', 'id1', $friendsQuery], 'id2='.Yii::$app->user->identity->id])
-					->join('join', 'user', 'id1 = user.id')
-					->join('left join', 'photo', 'user.photo = photo.id')
-					->select([
-						'id' => 'friends.id1',
-						'fio' => 'user.fio',
-						'photo' => 'photo.photo',
-					])
-					->all();
-		$add = (new Query())
-					->from('friends')
-					->where(['and', ['not in', 'id2', $friendsQuery], 'id1='.Yii::$app->user->identity->id])
-					->join('join', 'user', 'id2 = user.id')
-					->join('left join', 'photo', 'user.photo = photo.id')
-					->select([
-						'id' => 'friends.id1',
-						'fio' => 'user.fio',
-						'photo' => 'photo.photo',
-					])
-					->all();
-		$friends = $friendsQuery
-					->join('join', 'user', 'a.id2 = user.id')
-					->join('left join', 'photo', 'user.photo = photo.id')
-					->select([
-						'id' => 'a.id2',
-						'fio' => 'user.fio',
-						'photo' => 'photo.photo',
-					])
-					->all();
+		if(Yii::$app->request->isPost){
+			QueryModel::addTo(Yii::$app->request->get('id'));
+		}
+		$new = QueryModel::newFriends();
+		$add = QueryModel::addFriends();
+		$friends = QueryModel::friends();
 		return $this->render('friends',[
 			'friends' => $friends,
 			'new' => $new,
@@ -304,19 +238,19 @@ class SiteController extends Controller
 		
 	}
 
-	public function actionMessages(){
-		$conferences = (new Query())
-						->from('conference')
-						->select('conferenceId')
-						->where(['userId' => Yii::$app->user->identity->id]);
-		$messages = (new Query())
-						->from('messages')
-						->where(['in', 'conferenceId', $conferences])
-						->having('max(created)')
-						->all();
-		$this->render('messages', [
-			'messages' => $messages,
+	public function actionConferences(){
+		$conferences = QueryModel::conferences();
+		return $this->render('conferences', [
+			'conferences' => $conferences,
 		]);
+	}
+
+	public function actionGetconference($id){
+		$conference = QueryModel::conference($id);
+		if($conference == null){
+			$conference = QueryModel::createConference($id);
+		}
+		$this->redirect(Url::to(['site/messages', 'id' => $conference['id']]));
 	}
 
 	public function actionSearch(){
@@ -326,8 +260,7 @@ class SiteController extends Controller
 				$query = $model->search();
 			}
 			else{
-				$query = PhotoActiveRecord::find()
-							->orderBy(['posted' => SORT_DESC]);
+				$query = QueryModel::photos();
 			}
 			return $this->render('search',[
 				'model' => $model,
@@ -336,9 +269,50 @@ class SiteController extends Controller
 		}
 		return $this->goBack();
 	}
+	
+	public function actionLang($lang){
+		switch($lang){
+			case 'en':
+				Yii::$app->language = 'en-En';
+				Yii::$app->session->set('language', 'en-En');
+				break;
+			case 'uk':
+				Yii::$app->language = 'uk-Ru';
+				Yii::$app->session->set('language', 'uk-Ru');
+				break;
+			default:
+				Yii::$app->language = 'ru-Ru';
+				Yii::$app->session->set('language', 'ru-Ru');
+				break;//?????????????
+		}
+		return $this->goBack();
+	}
+	
+	public function actionEdit($id){
+		$photo = PhotoActiveRecord::findOne($id);
+		$editable = EditingPhotoActiveRecord::createEditingPhoto($photo->id);
+		return $this->render('edit', [
+			'photo' => $editable,
+		]);
+	}
+	
+	public function actionMessages($id){
+		$model = new CommentForm();
+		if($model->load(Yii::$app->request->post())){
+			if($model->postMessage()){
+				$this->refresh();
+			}
+		}
+		$messages = QueryModel::messages($id);
+		return $this->render('messages',[
+			'messages' => $messages,
+			'model' => $model,
+		]);
+	}
 
     public function actionAbout()
     {
-        return $this->render('profile');
+        return $this->render('about');
     }
+    
 }

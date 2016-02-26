@@ -1,61 +1,68 @@
 <?php
 
 use yii\helpers\Html;
+use yii\helpers\Url;
 use yii\widgets\ActiveForm;
 
-$this->title = 'My Yii Application';
+$this->title = Yii::t('app', 'Главная');
 ?>
-<div class="row">
+<div class="row container" style="padding: 2%; margin-left: 0.5%">
 	<?php $form = ActiveForm::begin([
+					'enableClientValidation' => false,
+					'enableClientScript' => false,
+					'validateOnBlur' => false,
+					'validateOnChange' => false,
+					'validateOnType' => false,
 					'options' => [
-						'class' => 'navbar-form',
+						'class' => 'form-inline',
 						'role' => 'search',
-						//'style' => 'width: 100px',
 					],
 	]); ?>
-	<?= $form->field($model, 'text')
-				->textInput([
-					'style' => 'width: 100px',
-					'placeholder' => 'Поиск',
+	<?= $form->field($model, 'text', [
+							'options' => [
+								'class' => 'col-xs-6 col-md-8',
+							],
+						])->render(
+							'<input id="searchform-text" class="form-control" name="SearchForm[text]" type="text" style="width: 100%;" placeholder="'
+							.Yii::t('app', 'Поиск').'"/>') ?>
+	
+	<?= $form->field($model, 'type', [
+					'template' => '<div class="form-group">
+										{input}
+									</div>',
+					'options' => [ 	
+						'class' => 'form-group col-xs-4 col-md-2',
+					],
+				])
+				->dropdownList([
+					'name' => \Yii::t('app', 'По названию'),
+					'tag' => \Yii::t('app', 'По тегу'),
+					'users' => \Yii::t('app', 'Пользователя'),
+				],[
+					'class' => 'form-control',
 				]) ?>
-	<?= $form->field($model, 'type')
-				->dropdownlist([
-					'name' => 'По названию',
-					'tag' => 'По тегу',
-					'users' => 'Пользователя',
-				]) ?>
-	<?= Html::submitButton('Поиск', [
-			'class' => 'btn btn-default',
-		]) ?>
+	
+	<?= Html::submitButton(\Yii::t('app', 'Поиск'), ['class' => 'btn btn-primary col-xs-2 col-md-1', 'name' => 'login-button']) ?>
+	
 	<?php ActiveForm::end(); ?>
 </div>
 
-<!--form class="navbar-form" role="search">
-	<div class="col-md-4">
-		<input type="text" style="width: 100%;" class="form-control" placeholder="Поиск"/>
+<div class="container">
+	<div class="row">
+	<?php for($i = 0 ; $i < count($query) ; $i++){
+		if($i % 3 == 0 && $i != 0){ ?>
+			</div>
+			<div class="row">
+		<?php } ?>
+		<div class="col-md-4 text-center">
+			<a href="<?= isset($query[$i]['posted'])?Url::to(['site/image', 'id' => $query[$i]['id']]):Url::to(['site/photo', 'id' => $query[$i]['id']]) ?>" class="thumbnail">
+				<?= Html::img(
+						$query[$i]['thumbnail']?'data:image/jpeg;base64,'.base64_encode($query[$i]['thumbnail']):'./web/img/user.png',[
+						'alt' => $query[$i]['name'],
+					]) ?>
+			</a>
+			<p><?= $query[$i]['name'] ?></p>
+		</div>
+	<?php } ?>
 	</div>
-	<div class="dropdown form-group">
-		<button class="btn btn-default dropdown-toogle" type="button" id="dropdownTypeSelectType" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">
-		По названию
-		<span class="caret"></span>
-		</button>
-		<ul class="dropdown-menu" aria-labelledby="dropdownTypeSelectType">
-			<li><a href="#"> По названию </a></li>
-			<li><a href="#"> По тегу </a></li>
-		</ul>
-	</div>
-	<input class="btn btn-default" type="submit" value="Поиск"/>
-</form-->
-<div class="row">
-<?php foreach($query as $image){ ?>
-	<div class="col-md-4 text-center">
-		<a href=<?= isset($image['posted'])?'index.php?r=site/image&id='.$image['id']:'index.php?r=site/photo&id='.$image['id'] ?> class="thumbnail">
-			<?= Html::img(
-					$image['photo']?'data:image/jpeg;base64,'.base64_encode($image['photo']):'./web/img/user.png',[
-					'alt' => $image['name'],
-				]); ?>
-		</a>
-		<p><?= $image['name'] ?></p>
-	</div>
-<?php } ?>
 </div>

@@ -5,6 +5,7 @@ namespace app\models;
 use Yii;
 use yii\base\Model;
 use yii\db\Query;
+use yii\db\ActiveQuery;
 
 class SearchForm extends Model{
 	public $text;
@@ -28,13 +29,17 @@ class SearchForm extends Model{
 			case 'name':
 			return PhotoActiveRecord::find()
 						->where(['like', 'name', $this->text])
-						->orderBy(['posted' => SORT_DESC]);
+						->orderBy(['posted' => SORT_DESC])
+						->asArray();
 			case 'tag':
 			$tags = TagsActiveRecord::find()
-						->where(['tag' => $this->text]);
+						->where(['like', 'tag', $this->text])
+						->select(['photo'])
+						->asArray();
 			return PhotoActiveRecord::find()
 						->where(['in', 'id', $tags])
-						->orderBy(['posted' => SORT_DESC]);
+						->orderBy(['posted' => SORT_DESC])
+						->asArray();
 			case 'users':
 			return (new Query())
 						->from('user')
@@ -42,7 +47,7 @@ class SearchForm extends Model{
 						->join('left join', 'photo', 'user.photo = photo.id')
 						->select([
 							'id' => 'user.id',
-							'photo' => 'photo.photo',
+							'thumbnail' => 'photo.thumbnail',
 							'name' => 'fio',
 							'username',
 							'pol',
@@ -53,8 +58,9 @@ class SearchForm extends Model{
 			case 'tags':
 			return TagsActiveRecord::find()
 						->where(['like', 'tag', $this->text])
-						->select('tag')
-						->distinct();
+						->select(['id', 'tag'])
+						->distinct()
+						->asArray();
 			case 'comments':
 			return (new Query())
 						->from('comments')

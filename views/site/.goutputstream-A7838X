@@ -1,0 +1,81 @@
+<?php
+
+use yii\helpers\Html;
+use yii\helpers\Url;
+use yii\widgets\ActiveForm;
+
+$this->title = Yii::t('app', 'Главная');
+?>
+<div class="row container" style="padding: 2%; margin-left: 0.5%">
+	<?php $form = ActiveForm::begin([
+					'enableClientValidation' => false,
+					'enableClientScript' => false,
+					'validateOnBlur' => false,
+					'validateOnChange' => false,
+					'validateOnType' => false,
+					'options' => [
+						//'class' => 'navbar-form',
+						'class' => 'form-inline',
+						'role' => 'search',
+					],
+	]); ?>
+	<?= $form->field($model, 'text')->render(
+						//'<div class="col-sm-8 form-group">
+							'<input id="searchform-text" class="col-sm-8 form-control" name="SearchForm[text]" type="text" placeholder="'.Yii::t('app', 'Поиск').'"/>
+						'//</div>') ?>
+	<?= $form->field($model, 'type', [
+					//'parts' => 'input',
+					'template' => '<div class="form-group">
+										{input}
+									</div>',
+					//'hintOptions' => [
+					//	'class' => 'hidden',
+					//],
+					'options' => [
+						'class' => 'form-group',
+					],
+				])
+				->dropdownList([
+					'name' => \Yii::t('app', 'По названию'),
+					'tag' => \Yii::t('app', 'По тегу'),
+					'users' => \Yii::t('app', 'Пользователя'),
+				],[
+					'class' => 'form-control',
+				]) ?>
+	<!--div class="form-group">
+		<div class="col-lg-11"-->
+			<?= Html::submitButton(\Yii::t('app', 'Поиск'), ['class' => 'btn btn-primary', 'name' => 'login-button']) ?>
+		<!--/div>
+	</div-->
+	<?php ActiveForm::end(); ?>
+</div>
+
+<!--form class="navbar-form" role="search" action="< ?= Url::to(['site/index']) ?>" method="post">
+	<div class="col-md-4">
+		<input type="text" style="width: 100%;" class="form-control" placeholder="Поиск"/>
+	</div>
+	<div class="dropdown form-group">
+		<button class="btn btn-default dropdown-toogle" type="button" id="dropdownTypeSelectType" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">
+		По названию
+		<span class="caret"></span>
+		</button>
+		<ul class="dropdown-menu" aria-labelledby="dropdownTypeSelectType">
+			<li><a href="#"> По названию </a></li>
+			<li><a href="#"> По тегу </a></li>
+		</ul>
+	</div>
+	<input class="btn btn-default" type="submit" value="Поиск"/>
+</form-->
+<div class="container">
+<?php foreach($query as $image){ ?>
+	<div class="col-md-4 text-center">
+		<a href="<?= isset($image['posted'])?Url::to(['site/image', 'id' => $image['id']]):Url::to(['site/photo', 'id' => $image['id']]) ?>" class="thumbnail">
+			<?= Html::img(
+					$image['thumbnail']?'data:image/jpeg;base64,'.base64_encode($image['thumbnail']):'./web/img/user.png',[
+					'alt' => $image['name'],
+				]) ?>
+		</a>
+		<p><?= $image['name'] ?></p>
+	</div>
+<?php } ?>
+</div>

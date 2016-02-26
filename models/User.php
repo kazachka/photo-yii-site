@@ -63,7 +63,6 @@ class User extends \yii\db\ActiveRecord implements \yii\web\IdentityInterface
     public static function findByUsername($username)
     {
 		$users = static::find()->all();
-			echo var_dump($users);
         foreach ($users as $user) {
             if (strcasecmp($user['username'], $username) === 0) {
                 return new static($user);

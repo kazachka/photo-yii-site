@@ -5,9 +5,6 @@ namespace app\models;
 use Yii;
 use yii\base\Model;
 
-/**
- * ContactForm is the model behind the contact form.
- */
 class RegisterForm extends Model
 {
     public $username;
@@ -25,12 +22,13 @@ class RegisterForm extends Model
     public function rules()
     {
         return [
-			[['username', 'password', 'fio', 'pol', 'email'], 'required'],
+			[['username', 'password', 'password_repeat', 'fio', 'pol', 'email'], 'required'],
 			['password', 'compare'],
 			['pol', 'boolean'],
-			['photo', 'file'],
+			['photo', 'file', 'extensions' => 'jpg, gif, png', 'maxFiles' => 1],
 			['birthday', 'date'],
 			['email', 'email'],
+			[['country', 'place'], 'string'],
             ['verifyCode', 'captcha'],
         ];
     }
@@ -38,17 +36,56 @@ class RegisterForm extends Model
     public function attributeLabels()
     {
         return [
-			'username' => 'Логин',
-			'password' => 'Повторите пароль',
-			'password_repeat' => 'Пароль',
-			'fio' => 'ФИО',
-			'pol' => 'Пол',
-			'photo' => 'Фото',
-			'country' => 'Страна',
-			'place' => 'Место проживания',
-            'verifyCode' => 'Код проверки',
+			'username' => Yii::t('app', 'Логин'),
+			'password' => Yii::t('app', 'Повторите пароль'),
+			'password_repeat' => Yii::t('app', 'Пароль'),
+			'fio' => Yii::t('app', 'ФИО'),
+			'pol' => Yii::t('app', 'Пол'),
+			'photo' => Yii::t('app', 'Фото'),
+			'country' => Yii::t('app', 'Страна'),
+			'place' => Yii::t('app', 'Место проживания'),
+            'verifyCode' => Yii::t('app', 'Код проверки'),
         ];
     }
 
-	public function register(){}
+	public function register(){
+		if($this->validate()){
+			$user = new User();
+			$user->username = $this->username;
+			$user->password = $this->password;
+			$user->fio = $this->fio;
+			$user->pol = $this->pol;
+			$user->birthday = $this->birthday;
+			$user->country = $this->country;
+			$user->place = $this->place;
+			$user->email = $this->email;
+			$user->registerDate = date('Y-m-d H:i:s');
+			Yii::trace($this->birthday);
+			Yii::trace($user->birthday.' '.$user->registerDate);
+			if(!$user->save()){
+				return false;
+			}
+			if(!Yii::$app->user->login(User::findByUsername($this->username), 0)){
+				return false;
+			}
+			$photo = new PhotoActiveRecord();
+			$photo->userId = Yii::$app->user->identity->id;
+			$photo->photo = file_get_contents($this->photo->tempName);
+			$imagick = new \Imagick();
+			$imagick->readImageBlob($photo->photo);
+			foreach($imagick as $frame){
+				$frame->thumbnailImage(800, 0);
+			}
+			$photo->thumbnail = $imagick->getImagesBlob();
+			$photo->posted = date('Y-m-d H:i:s');
+			$photo->name = $this->fio;
+			if(!$photo->save()){
+				return false;
+			}
+			$user->photo = $photo->id;
+			$user->save();
+			return true;
+		}
+		return false;
+	}
 }
